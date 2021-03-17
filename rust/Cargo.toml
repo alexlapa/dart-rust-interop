@@ -1,0 +1,16 @@
+[package]
+name = "rust_ffi"
+version = "0.0.1"
+edition = "2018"
+build = "build.rs"
+
+[lib]
+name = "rust_ffi"
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2.89"
+dart-sys = "2.0.1"
+
+[build-dependencies]
+cc = "1.0"

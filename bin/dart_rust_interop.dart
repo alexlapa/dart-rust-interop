@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:ffi';
+
+import 'executor.dart';
 
 final nativeLib = DynamicLibrary.open('./rust/target/debug/librust_ffi.so');
 
@@ -17,8 +20,20 @@ void doDynamicLinking() {
 
 void main() async {
   doDynamicLinking();
+  var executor = Executor(nativeLib);
+  executor.start();
 
+  print("runAsync 1s start");
+  await runAsync(1000);
+  print("runAsync 1s done");
+  print("runAsync 5s start");
+  await runAsync(5000);
+  print("runAsync 5s done");
+
+  print("running simpleCallback");
   simpleCallback();
+
+  executor.stop();
 }
 
 /////////////////////// simple callback
@@ -43,4 +58,17 @@ void simpleCallback() {
   // // When C is done it needs to stop holding on to the closure such that the
   // // Dart GC can collect the closure.
   releaseClosureCallback();
+}
+
+//////////////////// async fn
+
+final runNativeAsync = nativeLib.lookupFunction<Void Function(Int64, Handle),void Function(int, void Function())>("RunAsync");
+
+void runAsync(int) async {
+  final Completer _completer = new Completer();
+  runNativeAsync(int, () => {
+    _completer.complete()
+  });
+
+  return _completer.future;
 }

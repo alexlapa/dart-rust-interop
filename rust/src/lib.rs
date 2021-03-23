@@ -1,5 +1,7 @@
 mod executor;
 
+use futures::channel::oneshot;
+
 use std::{
     ffi::{CStr, CString},
     time::Duration,
@@ -15,6 +17,9 @@ extern "C" {
     fn Dart_NewPersistentHandle_DL_Trampolined(object: Dart_Handle) -> Dart_PersistentHandle;
     fn Dart_HandleFromPersistent_DL_Trampolined(object: Dart_PersistentHandle) -> Dart_Handle;
     fn Dart_DeletePersistentHandle_DL_Trampolined(object: Dart_PersistentHandle);
+    fn Dart_NewApiError_DL_Trampolined(msg: *const libc::c_char) -> Dart_Handle;
+    fn Dart_NewUnhandledExceptionError_DL_Trampolined(exception: Dart_Handle) -> Dart_Handle;
+    fn Dart_PropagateError_DL_Trampolined(handle: Dart_Handle);
 }
 
 pub struct DartCallback {
@@ -79,7 +84,6 @@ pub unsafe extern "C" fn RunAsync(timeout: i64, cb: Dart_Handle) {
 }
 
 /// strings
-
 #[no_mangle]
 pub unsafe extern "C" fn Strings(string_in: *const libc::c_char) -> *const libc::c_char {
     let string_in = CStr::from_ptr(string_in).to_str().unwrap().to_owned();
@@ -94,4 +98,68 @@ pub unsafe extern "C" fn FreeRustString(s: *mut libc::c_char) {
         return;
     }
     CString::from_raw(s);
+}
+
+/// throw from native
+#[no_mangle]
+pub unsafe extern "C" fn ThrowFromNative() {
+    let err_msg = "Exception thrown from rust message\0".as_ptr() as *const libc::c_char;
+    let api_error = Dart_NewApiError_DL_Trampolined(err_msg);
+    let unhandled_exception = Dart_NewUnhandledExceptionError_DL_Trampolined(api_error);
+    // CAUTION: transfers control non-locally using a setjmp-like mechanism. None of the Rust code
+    // after this statement is executed (including Drop's).
+    Dart_PropagateError_DL_Trampolined(unhandled_exception);
+    panic!("This panic is not reached");
+}
+
+/////////////// call dart async fn from rust
+
+#[no_mangle]
+pub unsafe extern "C" fn CallDartFutureFromRust(
+    get_future: extern "C" fn(tx: *mut oneshot::Sender<Result<i64, i64>>),
+    completion_cb: Dart_Handle,
+) {
+    let completion_cb = DartCallback::new(completion_cb);
+    let (tx, rx) = oneshot::channel();
+    get_future(Box::into_raw(Box::new(tx)));
+    spawn(async move {
+        println!("Dart future resolved with: {:?}", rx.await);
+        completion_cb.call();
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn OneshotSendOk(tx: *mut oneshot::Sender<Result<i64, i64>>, ok: i64) {
+    let mut tx = unsafe { Box::from_raw(tx) };
+    tx.send(Ok(ok));
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn OneshotSendErr(tx: *mut oneshot::Sender<Result<i64, i64>>, err: i64) {
+    let mut tx = unsafe { Box::from_raw(tx) };
+    tx.send(Err(err));
+}
+
+/////////////// enums
+
+#[derive(Debug, Eq, PartialEq)]
+enum Color {
+    Blue,
+    Rust,
+}
+
+impl From<u8> for Color {
+    fn from(val: u8) -> Self {
+        match val {
+            0 => Color::Blue,
+            1 => Color::Rust,
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Enums(color: u8) -> libc::c_int {
+    assert_eq!(Color::from(color), Color::Blue);
+    Color::Rust as libc::c_int
 }

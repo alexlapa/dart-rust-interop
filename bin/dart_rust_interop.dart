@@ -35,8 +35,19 @@ void main() async {
   print("running simpleCallback");
   simpleCallback();
 
-  var stringFromRust = strings("123456789");
-  print('String from Rust: ${stringFromRust}');
+  assert(strings("123456789") == '987654321');
+
+  try {
+    throwFromNative();
+  } catch (e, s) {
+    print("Exception from Rust is caught `${e}`\n ${s}");
+  } finally {
+    print("finally block is executed when exception from rust is caught");
+  }
+
+  await callDartFutureFromRustFromDart();
+
+  assert(Color.blue == enums(Color.rust));
 
   executor.stop();
 }
@@ -66,7 +77,7 @@ void simpleCallback() {
 final nativeRunAsync = nativeLib.lookupFunction<Void Function(Int64, Handle),
     void Function(int, void Function())>("RunAsync");
 
-void runAsync(int) async {
+Future<void> runAsync(int) async {
   final Completer _completer = new Completer();
   nativeRunAsync(int, () => {_completer.complete()});
 
@@ -101,4 +112,56 @@ extension RustStringPointer on Pointer<Utf8> {
       nativeFreeRustString(this);
     }
   }
+}
+
+//////////////// throw from native
+
+final nativeThrowFromNative = nativeLib
+    .lookupFunction<Void Function(), void Function()>("ThrowFromNative");
+
+void throwFromNative() {
+  nativeThrowFromNative();
+}
+
+/////////////// call dart future from rust
+
+final nativeOneshotSendOk = nativeLib.lookupFunction<
+    Void Function(Pointer, Int64),
+    void Function(Pointer, int)>("OneshotSendOk");
+final nativeOneshotSendErr = nativeLib.lookupFunction<
+    Void Function(Pointer, Int64),
+    void Function(Pointer, int)>("OneshotSendErr");
+final nativeCallDartFutureFromRust = nativeLib.lookupFunction<
+    Void Function(Pointer, Handle),
+    void Function(Pointer, void Function())>("CallDartFutureFromRust");
+
+Future<void> callDartFutureFromRustFromDart() {
+  final Completer _completer = new Completer();
+
+  var fp =
+      Pointer.fromFunction<Void Function(Pointer)>(wrapperForSomeDartAsyncFn);
+  nativeCallDartFutureFromRust(fp, () => {_completer.complete()});
+
+  return _completer.future;
+}
+
+Future<int> someDartAsyncFnThatWeWantToCallFromRust() async {
+  return Future.delayed(Duration(seconds: 1), () => 333);
+}
+
+void wrapperForSomeDartAsyncFn(Pointer txPtr) {
+  someDartAsyncFnThatWeWantToCallFromRust().then(
+      (value) => {nativeOneshotSendOk(txPtr, value)},
+      onError: (err, st) => {nativeOneshotSendErr(txPtr, err)});
+}
+
+//////////////// enums
+
+enum Color { blue, rust }
+
+final nativeEnums =
+    nativeLib.lookupFunction<Uint8 Function(Uint8), int Function(int)>("Enums");
+
+Color enums(Color color) {
+  return Color.values[nativeEnums(color.index)];
 }

@@ -47,7 +47,9 @@ void main() async {
 
   await callDartFutureFromRustFromDart();
 
-  assert(Color.blue == enums(Color.rust));
+  assert(Color.rust == enums(Color.blue));
+
+  assert([1, 2, 3] == arrayFromRust());
 
   executor.stop();
 }
@@ -165,3 +167,26 @@ final nativeEnums =
 Color enums(Color color) {
   return Color.values[nativeEnums(color.index)];
 }
+
+//////////////// arrays
+
+final nativeArrays = nativeLib.lookupFunction<Array Function(), Array Function()>("Arrays");
+final nativeFreeArray = nativeLib.lookupFunction<Void Function(Array), void Function(Array)>("FreeArray");
+
+class Array extends Struct {
+  Pointer<Int64> arr;
+
+  @Uint64()
+  int len;
+}
+
+List<int> arrayFromRust() {
+  var arr = nativeArrays();
+  try {
+    var list = arr.arr.asTypedList(arr.len);
+    return list;
+  } finally {
+    nativeFreeArray(arr);
+  }
+}
+

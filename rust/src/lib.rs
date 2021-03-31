@@ -109,7 +109,7 @@ pub unsafe extern "C" fn ThrowFromNative() {
     // CAUTION: transfers control non-locally using a setjmp-like mechanism. None of the Rust code
     // after this statement is executed (including Drop's).
     Dart_PropagateError_DL_Trampolined(unhandled_exception);
-    panic!("This panic is not reached");
+    unreachable!("Actually unreachable");
 }
 
 /////////////// call dart async fn from rust
@@ -163,3 +163,38 @@ pub unsafe extern "C" fn Enums(color: u8) -> libc::c_int {
     assert_eq!(Color::from(color), Color::Blue);
     Color::Rust as libc::c_int
 }
+
+/////////////// arrays
+
+#[repr(C)]
+pub struct Array {
+    arr: *const i64,
+    len: u64,
+}
+
+impl From<Vec<i64>> for Array {
+    fn from(mut vec: Vec<i64>) -> Self {
+        Self {
+            len: vec.len() as u64,
+            arr: Box::leak(vec.into_boxed_slice()).as_ptr(),
+        }
+    }
+}
+
+impl Drop for Array {
+    fn drop(&mut self) {
+        if !self.arr.is_null() {
+            unsafe {
+                Box::from_raw(self.arr as *mut i64);
+            };
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn Arrays() -> Array {
+    Array::from(vec![1, 2, 3])
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FreeArray(arr: Array) {}

@@ -170,8 +170,10 @@ Color enums(Color color) {
 
 //////////////// arrays
 
-final nativeArrays = nativeLib.lookupFunction<Array Function(), Array Function()>("Arrays");
-final nativeFreeArray = nativeLib.lookupFunction<Void Function(Array), void Function(Array)>("FreeArray");
+final nativeArrays =
+    nativeLib.lookupFunction<Array Function(), Array Function()>("Arrays");
+final nativeFreeArray = nativeLib
+    .lookupFunction<Void Function(Array), void Function(Array)>("FreeArray");
 
 class Array extends Struct {
   Pointer<Int64> arr;
@@ -189,4 +191,3 @@ List<int> arrayFromRust() {
     nativeFreeArray(arr);
   }
 }
-

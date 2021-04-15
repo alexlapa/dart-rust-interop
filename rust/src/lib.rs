@@ -185,7 +185,8 @@ impl Drop for Array {
     fn drop(&mut self) {
         if !self.arr.is_null() {
             unsafe {
-                Box::from_raw(self.arr as *mut i64);
+                let slice = std::slice::from_raw_parts_mut(self.arr as *mut i64, self.len as usize);
+                Box::from_raw(slice);
             };
         }
     }
